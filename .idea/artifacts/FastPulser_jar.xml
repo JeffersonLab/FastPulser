@@ -1,0 +1,11 @@
+<component name="ArtifactManager">
+  <artifact build-on-make="true" name="FastPulser:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/FastPulser_jar</output-path>
+    <root id="root">
+      <element id="archive" name="FastPulser.jar">
+        <element id="module-output" name="FastPulser" />
+      </element>
+      <element id="library" level="project" name="netty-all-4.0.29.Final" />
+    </root>
+  </artifact>
+</component>

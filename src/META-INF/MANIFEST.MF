@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Class-Path: netty-all-4.0.29.Final.jar
+Main-Class: org.jlab.fastpulse.FastPulserCLI
+
