@@ -1,0 +1,6 @@
+
+out/artifacts/FastPulser_jar/FastPulser.jar
+
+*.class
+
+out/production/FastPulser/META-INF/MANIFEST.MF
