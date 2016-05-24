@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Created by john on 7/15/15.
@@ -84,7 +85,11 @@ public class FastPulserCLI {
             d.getInterface(0).setVoltage(PulserInterface.VLED, 9.0f);
             //d.getInterface(0).setRegulator(PulserInterface.VLED, 0xcc);
 
-            d.updateRegisters();
+            try {
+                d.updateRegisters(true, 1000);
+            } catch (TimeoutException e) {
+                e.printStackTrace();
+            }
 
         } catch (InvalidRegisterException e) {
             e.printStackTrace();
@@ -109,7 +114,12 @@ public class FastPulserCLI {
 
                 // Wait for new registers
                 s_State = 3;
-                d.updateRegisters();
+
+                try {
+                    d.updateRegisters(true, 1000);
+                } catch (TimeoutException e) {
+                    e.printStackTrace();
+                }
             }
 
             // Request a readback, data wont be valid until the next read??

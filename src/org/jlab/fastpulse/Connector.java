@@ -11,7 +11,6 @@ public class Connector {
 
     private EventLoopGroup m_Group;
 
-
     private int m_Port;
     private String m_Address;
     private ConnectFuture m_ConnectFuture;
@@ -20,6 +19,10 @@ public class Connector {
     enum ConnectState {DISCONNECTED, CONNECTING, CONNECTED}
     private enum State {WAITING, DONE, CANCELLED}
 
+    /**
+     * Main device handler, manages access to the device via semaphore which is acquired and released
+     * after each command and receipt of new registers (automatically sent by the device)
+     */
     private abstract class FutureHandler implements FastPulserHandler {
         public Semaphore m_SemLock;
         protected DeviceImpl m_Device;
@@ -47,7 +50,14 @@ public class Connector {
 
         @Override
         public void registersReceived(Device d) {
+            m_SemLock.release();
 
+            // Complete the future of any pending command which may have prompted the registers
+            DeviceFuture df = ((DeviceImpl)d).getDeviceFuture();
+
+            if (df != null) {
+                df.complete(d.getRegisters());
+            }
         }
 
         public DeviceImpl getDevice() { return m_Device; }

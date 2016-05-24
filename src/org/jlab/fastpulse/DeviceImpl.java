@@ -1,8 +1,14 @@
 package org.jlab.fastpulse;
 
+import io.netty.util.Timeout;
+
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.logging.Logger;
 
 /**
  * Created by john on 7/15/15.
@@ -15,6 +21,8 @@ public class DeviceImpl implements Device {
     private List<PulserInterface> m_Interface;
 
     private WeakReference<ChannelContext> mw_Ctx;
+
+    private DeviceFuture m_DeviceFuture = null;
 
     DeviceImpl() {
         this("0.0.0.0");
@@ -35,11 +43,15 @@ public class DeviceImpl implements Device {
                             6, 7, 10}));    // trigger rate high/low/status
 
         m_Interface.add(1, new PulserInterface(1, "J3", m_Registers,
-                new byte[] {3, 3, 7, 0,
-                            5, 5, 8, 0,
-                            4, 4, 8, 1,
-                            10, 1,
-                            8, 9, 11}));
+                new byte[]{3, 3, 7, 0,
+                        5, 5, 8, 0,
+                        4, 4, 8, 1,
+                        10, 1,
+                        8, 9, 11}));
+    }
+
+    DeviceFuture getDeviceFuture() {
+        return m_DeviceFuture;
     }
 
     public void setContext(ChannelContext ctx) {
@@ -59,32 +71,49 @@ public class DeviceImpl implements Device {
         return m_Interface.get(id);
     }
 
-    public void updateRegisters() {
+    /**
+     * TODO: This should block until the new register set is received
+     */
+    public DeviceFuture updateRegisters(boolean wait, int timeout) throws TimeoutException {
         ChannelContext ctx = mw_Ctx.get();
 
-        if (ctx != null) {
+        if (ctx != null && m_DeviceFuture == null) {
             ctx.write(m_Registers);
 
-            /*
-            try {
-                Thread.sleep(250);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+            m_DeviceFuture = new DeviceFuture();
 
-            requestRegisters();
-            */
+            if (wait) {
+                try {
+                    m_DeviceFuture.get(timeout, TimeUnit.MILLISECONDS);
+
+                } catch (ExecutionException | InterruptedException e) {e.printStackTrace();}
+            }
         }
+
+        return m_DeviceFuture;
     }
 
-    public void requestRegisters() {
-        System.out.println("Requesting registers");
+    /**
+     * TODO: This should block until the register set is received
+     */
+    public DeviceFuture requestRegisters(boolean wait, int timeout) throws TimeoutException {
+        Logger.getLogger("global").info("Requesting registers");
 
         ChannelContext ctx = mw_Ctx.get();
 
-        if (ctx != null) {
+        if (ctx != null && m_DeviceFuture == null) {
             ctx.write(Command.ReadRegisters());
+
+            m_DeviceFuture = new DeviceFuture();
+
+            if (wait) {
+                try {
+                    m_DeviceFuture.get(timeout, TimeUnit.MILLISECONDS);
+                } catch (ExecutionException | InterruptedException e) {e.printStackTrace();}
+            }
         }
+
+        return m_DeviceFuture;
     }
 
 }

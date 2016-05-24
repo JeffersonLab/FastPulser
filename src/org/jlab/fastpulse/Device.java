@@ -1,5 +1,7 @@
 package org.jlab.fastpulse;
 
+import java.util.concurrent.TimeoutException;
+
 /**
  * Created by john on 7/15/15.
  */
@@ -10,7 +12,7 @@ public interface Device {
 
     PulserInterface getInterface(int id);
 
-    void updateRegisters();
+    DeviceFuture updateRegisters(boolean wait, int timeout) throws TimeoutException;
 
-    void requestRegisters();
+    DeviceFuture requestRegisters(boolean wait, int timeout) throws TimeoutException;
 }

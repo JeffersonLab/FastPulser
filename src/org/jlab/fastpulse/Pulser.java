@@ -1,9 +1,14 @@
 package org.jlab.fastpulse;
 
+
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.logging.Logger;
 
 /**
  * Created by john on 7/27/15.
@@ -15,7 +20,8 @@ public class Pulser {
     private JButton applyButton;
     private JButton refreshButton;
 
-    private FormHandler m_Handler;
+    private Connector m_Connector;
+    private Device m_Device;
 
     public Pulser() {
         applyButton.addActionListener(new ActionListener() {
@@ -23,6 +29,7 @@ public class Pulser {
             @Override
             public void actionPerformed(ActionEvent e) {
                 applyChanges();
+                updateGui();
             }
         });
 
@@ -31,66 +38,37 @@ public class Pulser {
             @Override
             public void actionPerformed(ActionEvent e) {
                 refreshRegisters();
+                updateGui();
             }
 
         });
+
     }
 
     private void runGui() {
 
-        m_Handler = new FormHandler();
+        if (m_Connector == null) {
 
-        FastPulserCLI pulser = new FastPulserCLI(FastPulserCLI.IP);
+            // TODO Move this to connect button handler
+            m_Connector = new Connector(FastPulserCLI.IP, FastPulserCLI.PORT);
 
-        // This needs to be able to be specified
-        pulser.connect();
+            Future<Device> cf = m_Connector.connect();
 
-        boolean shouldContinue = true;
+            try {
+                m_Device = cf.get(1000, TimeUnit.MILLISECONDS);
 
-        try {
-
-            while (shouldContinue) {
-
-                Thread.sleep(50);
-
-                // Wait until registers have been received for the first time
-                if (m_Handler.m_Device == null)
-                    continue;
-
-                switch (m_Handler.state) {
-                    case 0:
-                        //We just initialized, finish setting up the form
-                        getModule1().setModuleName("J4");
-                        getModule2().setModuleName("J3");
-
-                        m_Handler.state = 1;
-                        break;
-
-                    case 1:
-                        // Ready for commands, wait for button press
-                        break;
-
-                    case 2:
-                        // Waiting for response from last command
-                        m_Handler.m_SemLock.acquire();
-
-                        updateGui();
-                        break;
-
-                    case 3:
-                        m_Handler.m_SemLock.acquire();
-
-                        toggleEnable();
-                        break;
-
-                    default:
-                        shouldContinue = false;
-                        break;
-                }
+            } catch (ExecutionException | InterruptedException e) {
+                e.printStackTrace();
+            } catch (TimeoutException e) {
+                Logger.getLogger("global").severe("Connection attempt timeout");
+                return;
             }
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+
+            getModule1().setModuleName("J4");
+            getModule2().setModuleName("J3");
+
         }
+
     }
 
     public Module getModule1() {
@@ -102,50 +80,9 @@ public class Pulser {
     }
 
 
-    static class FormHandler implements FastPulserHandler {
-
-        public Device m_Device = null;
-        public int state = -1;
-        public Semaphore m_SemLock;
-
-        FormHandler() {
-            m_SemLock = new Semaphore(1);
-
-            try {
-                m_SemLock.acquire();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-
-        public void initDevice(Device d) {}
-
-        public void registersReceived(Device d) {
-
-            System.out.println("registersReceived");
-
-            if (m_Device == null) {
-                m_Device = d;
-            }
-
-            if (state == -1) state = 0;
-
-            m_SemLock.release();
-        }
-    }
-
-    static FormHandler s_Handler;
-
     private void applyChanges() {
 
-        //acquire semaphore, update registers from gui, send command
-        try {
-            m_Handler.m_SemLock.acquire();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
-        Device d = m_Handler.m_Device;
+        Device d = m_Device;
 
         Module m1 = getModule1();
         Module m2 = getModule2();
@@ -163,26 +100,30 @@ public class Pulser {
             i2.setVoltage(PulserInterface.V2, m2.getV2Value());
             i2.setVoltage(PulserInterface.VLED, m2.getV3Value());
 
+            // I think this is taken care of in updateGui()?
+            /*
             if (    (i1.isEnabled() && !m1.getEnabled()) || (!i1.isEnabled() && m1.getEnabled()) ||
                     (i2.isEnabled() && !m2.getEnabled()) || (!i2.isEnabled() && m2.getEnabled()) ) {
 
-                m_Handler.state = 3;
-            } else {
-                m_Handler.state = 2;
             }
+            */
 
-            d.updateRegisters();
+
+            try {
+                d.updateRegisters(true, 1000);
+            } catch (TimeoutException e) {
+                e.printStackTrace();
+            }
 
         } catch (InvalidRegisterException e) {
             e.printStackTrace();
         }
-
-        // Wait for register readback, then we update form
+        
     }
 
 
     private void updateGui() {
-        Device d = m_Handler.m_Device;
+        Device d = m_Device;
 
         Module m1 = getModule1();
         Module m2 = getModule2();
@@ -203,35 +144,24 @@ public class Pulser {
             m1.setEnable(s1.enable);
             m2.setEnable(s2.enable);
 
-        } catch (InvalidRegisterException e) {
-            e.printStackTrace();
-        }
-
-        // Wait for next command
-        m_Handler.state = 1;
-    }
-
-    private void toggleEnable() {
-
-        Device d = m_Handler.m_Device;
-
-        Module m1 = getModule1();
-        Module m2 = getModule2();
-
-        try {
-
             d.getInterface(0).setEnabled(m1.getEnabled());
             d.getInterface(1).setEnabled(m2.getEnabled());
 
         } catch (InvalidRegisterException e) {
             e.printStackTrace();
         }
+
     }
 
-    void refreshRegisters() {
-        Device d = m_Handler.m_Device;
 
-        d.requestRegisters();
+    void refreshRegisters() {
+        Device d = m_Device;
+
+        try {
+            d.requestRegisters(true, 1000);
+        } catch (TimeoutException e) {
+            e.printStackTrace();
+        }
     }
 
 
